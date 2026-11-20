@@ -24,3 +24,6 @@
 - Поток-редирект: type=forced, schema=redirect, action_type=http, action_payload=URL, filters=[{name: country, mode: accept, payload: [XX]}]
 - Поток-офферы: type=regular, schema=landings, offers=[{offer_id, share, state}]; share = вес в %
 - Создание: POST /campaigns, POST /streams
+- POST /campaigns: обязательны name, alias (8 случайных символов), type=position, domain_id, group_id, traffic_source_id
+- Кампания создалась: id 216857, домен kylovoa.com, группа FORTESTS. Алиас и остальные обязательные поля Keitaro подставил сам (cost_type, uniqueness_method и т. д.), так что минимальный набор полей для POST /campaigns у нас теперь известен:name, alias, type, domain_id, group_id, traffic_source_id (+ state)
+- POST /streams принимает offers сразу при создании потока
