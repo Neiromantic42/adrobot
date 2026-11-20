@@ -25,5 +25,8 @@ class KeitaroClient:
     def list_campaigns(self) -> list[dict]:
         return self._request("GET", "/campaigns")
 
+    def get(self, path: str, **params):
+        return self._request("GET", path, params=params or None)
+
     def close(self) -> None:
         self._client.close()
