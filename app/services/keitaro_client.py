@@ -78,6 +78,10 @@ class KeitaroClient:
         """
         return self._request("POST", path, json=json)
 
+    def delete(self, path: str):
+        """Отправляет DELETE-запрос в Keitaro для удаления объекта."""
+        return self._request("DELETE", path)
+
     def close(self) -> None:
         """Закрывает HTTP-клиент и освобождает сетевые ресурсы."""
         self._client.close()
