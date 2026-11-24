@@ -59,6 +59,7 @@ class StreamOffer(Base):
     stream_id: Mapped[int] = mapped_column(ForeignKey("streams.id", ondelete="CASCADE"))
     offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id"))
     weight: Mapped[int] = mapped_column(Integer, default=0)
+    published_weight: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     state: Mapped[str] = mapped_column(String(20), default=OfferState.ACTIVE.value)
 

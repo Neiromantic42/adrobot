@@ -33,11 +33,14 @@ def _merge_offers(db: Session, client, stream: Stream, k_offers: list[dict]) -> 
                 stream_id=stream.id,
                 offer_id=offer.id,
                 weight=ko["share"],
+                published_weight=ko["share"],
                 state=OfferState.ACTIVE.value,
             ))
-        elif so.state != OfferState.PENDING_REMOVE.value:
-            so.state = OfferState.ACTIVE.value
-            so.weight = ko["share"]
+        else:
+            so.published_weight = ko["share"]
+            if so.state != OfferState.PENDING_REMOVE.value:
+                so.state = OfferState.ACTIVE.value
+                so.weight = ko["share"]
 
     for oid, so in local.items():
         if oid in seen:
@@ -45,6 +48,7 @@ def _merge_offers(db: Session, client, stream: Stream, k_offers: list[dict]) -> 
         if so.state in (OfferState.ACTIVE.value, OfferState.PENDING_REMOVE.value):
             so.state = OfferState.REMOVED.value
             so.weight = 0
+            so.published_weight = 0
 
 
 def fetch_campaign(db: Session, client, keitaro_campaign_id: int) -> Campaign:
