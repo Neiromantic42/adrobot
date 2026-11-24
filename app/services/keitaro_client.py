@@ -78,6 +78,9 @@ class KeitaroClient:
         """
         return self._request("POST", path, json=json)
 
+    def put(self, path: str, json: dict | None = None):
+        return self._request("PUT", path, json=json)
+
     def delete(self, path: str):
         """Отправляет DELETE-запрос в Keitaro для удаления объекта."""
         return self._request("DELETE", path)
