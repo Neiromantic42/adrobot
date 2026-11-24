@@ -8,7 +8,7 @@
 - [x] 5. Модели + Alembic
 - [x] 6. Сервис весов + тесты
 - [x] 7. Fetch streams 2026-11-23: HR подтвердила технические неполадки на стороне компании, жду восстановления доступа
-- [ ] 8. Add / Remove / Bring back / Pin / Cancel
+- [x] 8. Add / Remove / Bring back / Pin / Cancel
 - [ ] 9. Push to Keitaro
 - [ ] 10. Поиск оффера
 - [ ] 11. Фронт редактора
