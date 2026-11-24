@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Campaign, Offer, OfferState, Stream, StreamOffer
@@ -19,7 +19,8 @@ def _get_or_create_offer(db: Session, client, keitaro_offer_id: int) -> Offer:
 
 
 def _merge_offers(db: Session, client, stream: Stream, k_offers: list[dict]) -> None:
-    local = {so.offer.keitaro_id: so for so in stream.stream_offers}
+    existing = db.scalars(select(StreamOffer).where(StreamOffer.stream_id == stream.id)).all()
+    local = {so.offer.keitaro_id: so for so in existing}
     seen: set[int] = set()
 
     for ko in k_offers:
@@ -69,7 +70,10 @@ def fetch_campaign(db: Session, client, keitaro_campaign_id: int) -> Campaign:
         k_offers = [o for o in (ks.get("offers") or []) if o.get("state", "active") == "active"]
         _merge_offers(db, client, stream, k_offers)
         db.flush()
-        stream.has_offers = bool(k_offers) or bool(stream.stream_offers)
+        offers_count = db.scalar(
+            select(func.count()).select_from(StreamOffer).where(StreamOffer.stream_id == stream.id)
+        )
+        stream.has_offers = bool(k_offers) or offers_count > 0
 
     db.commit()
     return campaign
