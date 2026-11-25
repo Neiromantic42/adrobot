@@ -117,3 +117,17 @@ def test_keitaro_failure_keeps_local_state(db):
 def test_push_unknown_stream_fails(db):
     with pytest.raises(ops.OpError):
         push_stream(db, FakeClient(), 999)
+
+
+class GoneClient:
+    def put(self, path, json=None):
+        raise KeitaroError("PUT -> 404", status_code=404)
+
+
+def test_push_to_deleted_stream_gives_clear_error(db):
+    s = make_stream(db, [50, 50])
+    ops.add_offer(db, s.id, 3)
+    before = snapshot(db)
+    with pytest.raises(ops.OpError):
+        push_stream(db, GoneClient(), s.id)
+    assert snapshot(db) == before

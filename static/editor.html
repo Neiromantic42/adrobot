@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Adrobot: редактор кампании</title>
+<style>
+  body { font-family: sans-serif; max-width: 860px; margin: 30px auto; padding: 0 12px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .stream { border: 1px solid #ccc; border-radius: 8px; padding: 12px; margin-bottom: 16px; background: #fff; }
+  .stream.dirty { background: #fff6c7; border-color: #e0b800; }
+  .stream h3 { margin: 0 0 8px; }
+  .tag { font-size: 12px; color: #8a6d00; margin-left: 8px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #eee; }
+  .row .name { flex: 1; }
+  .row.gone { color: #999; background: #f2f2f2; }
+  .w { width: 56px; text-align: right; font-weight: bold; }
+  .pin.on { background: #cfe8ff; }
+  .add { display: flex; gap: 8px; margin-top: 10px; }
+  .add input { flex: 1; }
+  .actions { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+  .total { margin-left: auto; color: #555; }
+  input, button { padding: 6px 10px; }
+  button { cursor: pointer; }
+  #msg { margin: 8px 0; white-space: pre-wrap; min-height: 1.2em; }
+  .err { color: #b3261e; } .ok { color: #137333; }
+</style>
+</head>
+<body>
+<p><a href="/">&larr; Создать кампанию</a></p>
+<h2>Редактор кампании</h2>
+<div class="bar">
+  <label>ID кампании в Keitaro <input id="cid" type="number" value="97" style="width:90px"></label>
+  <button id="fetch">Fetch streams</button>
+</div>
+<div id="msg"></div>
+<div id="streams"></div>
+<datalist id="dl"></datalist>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let campaign = null;
+
+function msg(text, cls) { const m = $("#msg"); m.textContent = text || ""; m.className = cls || ""; }
+
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method, headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) {
+    const d = data && data.detail;
+    throw new Error(d ? (typeof d === "string" ? d : JSON.stringify(d)) : "Ошибка " + r.status);
+  }
+  return data;
+}
+
+async function run(fn, okText) {
+  try { await fn(); msg(okText || "", "ok"); }
+  catch (e) { msg(e.message, "err"); }
+}
+
+function setStream(st) {
+  const i = campaign.streams.findIndex(s => s.id === st.id);
+  campaign.streams[i] = st;
+  render();
+}
+
+function offerRow(o) {
+  const gone = o.state === "pending_remove" || o.state === "removed";
+  let buttons = "";
+  if (o.state === "active" || o.state === "pending_add") {
+    buttons =
+      `<button class="pin ${o.pinned ? "on" : ""}" data-act="pin" data-id="${o.id}" data-pinned="${o.pinned}">` +
+      `${o.pinned ? "Unpin" : "Pin"}</button>` +
+      `<button data-act="remove" data-id="${o.id}">Remove</button>`;
+  } else if (o.state === "removed") {
+    buttons = `<button data-act="back" data-id="${o.id}">Bring back</button>`;
+  }
+  const note = o.state === "pending_add" ? " (новый)" : o.state === "pending_remove" ? " (будет удалён)" : o.state === "removed" ? " (удалён)" : "";
+  return `<div class="row ${gone ? "gone" : ""}">
+    <span class="name">#${o.offer_id} ${esc(o.name)}${note}</span>
+    <span class="w">${o.weight}%</span>${buttons}</div>`;
+}
+
+function streamHtml(s) {
+  const head = `<h3>${esc(s.name)}${s.dirty ? '<span class="tag">не опубликован</span>' : ""}</h3>`;
+  if (!s.has_offers) return `<div class="stream">${head}<small>Поток без офферов</small></div>`;
+  const total = s.offers
+    .filter(o => o.state === "active" || o.state === "pending_add")
+    .reduce((sum, o) => sum + o.weight, 0);
+  return `<div class="stream ${s.dirty ? "dirty" : ""}" data-sid="${s.id}">
+    ${head}${s.offers.map(offerRow).join("")}
+    <div class="add">
+      <input class="addinp" list="dl" placeholder="ID или название оффера">
+      <button data-act="add">Add</button>
+    </div>
+    <div class="actions">
+      <button data-act="push" ${s.dirty ? "" : "disabled"}>Push to Keitaro</button>
+      <button data-act="cancel" ${s.dirty ? "" : "disabled"}>Cancel</button>
+      <span class="total">Сумма: ${total}%</span>
+    </div></div>`;
+}
+
+function render() {
+  $("#streams").innerHTML = campaign ? campaign.streams.map(streamHtml).join("") : "";
+}
+
+$("#fetch").addEventListener("click", () => run(async () => {
+  campaign = await api("POST", `/api/campaigns/${$("#cid").value}/fetch`);
+  location.hash = $("#cid").value;
+  render();
+}, "Загружено из Keitaro"));
+
+$("#streams").addEventListener("click", ev => {
+  const btn = ev.target.closest("button[data-act]");
+  if (!btn) return;
+  const box = btn.closest(".stream");
+  const sid = box && box.dataset.sid;
+  const id = btn.dataset.id;
+  const act = btn.dataset.act;
+
+  if (act === "add") return run(async () => {
+    const input = box.querySelector(".addinp");
+    const offerId = parseInt(input.value, 10);
+    if (!offerId) throw new Error("Выберите оффер из списка или введите его ID");
+    setStream(await api("POST", `/api/streams/${sid}/offers`, { offer_id: offerId }));
+  });
+  if (act === "remove") return run(async () => setStream(await api("DELETE", `/api/stream-offers/${id}`)));
+  if (act === "back") return run(async () => setStream(await api("POST", `/api/stream-offers/${id}/bring-back`)));
+  if (act === "pin") return run(async () =>
+    setStream(await api("POST", `/api/stream-offers/${id}/pin`, { pinned: btn.dataset.pinned !== "true" })));
+  if (act === "cancel") return run(async () => setStream(await api("POST", `/api/streams/${sid}/cancel`)), "Изменения отменены");
+  if (act === "push") return run(async () => setStream(await api("POST", `/api/streams/${sid}/push`)), "Опубликовано в Keitaro");
+});
+
+let timer;
+$("#streams").addEventListener("input", ev => {
+  if (!ev.target.classList.contains("addinp")) return;
+  clearTimeout(timer);
+  const q = ev.target.value.trim();
+  timer = setTimeout(async () => {
+    try {
+      const found = await api("GET", "/api/offers/search?q=" + encodeURIComponent(q));
+      $("#dl").innerHTML = found.map(o => `<option value="${o.id} ${esc(o.name)}"></option>`).join("");
+    } catch (e) {}
+  }, 250);
+});
+
+(async () => {
+  const id = location.hash.slice(1);
+  if (!/^\d+$/.test(id)) return;
+  $("#cid").value = id;
+  try { campaign = await api("GET", `/api/campaigns/${id}`); render(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

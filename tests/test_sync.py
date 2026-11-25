@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401
 from app.db import Base
 from app.models import Offer, Stream, StreamOffer
-from app.services.sync import fetch_campaign
+from app.services.sync import DirtyStreamError, fetch_campaign
 
 
 class FakeClient:
@@ -98,3 +98,36 @@ def test_pending_remove_stays_while_offer_is_in_keitaro(db):
 
     fetch_campaign(db, FakeClient({1: 50, 2: 50}), 1)
     assert by_offer(db)[2].state == "pending_remove"
+
+
+class FakeClientNoOffersStream(FakeClient):
+    def get(self, path, **params):
+        data = super().get(path, **params)
+        if path.endswith("/streams"):
+            return [s for s in data if s["id"] != 11]
+        return data
+
+
+def test_stream_deleted_in_keitaro_is_removed_locally(db):
+    fetch_campaign(db, FakeClient({1: 100}), 1)
+    fetch_campaign(db, FakeClientNoOffersStream({1: 100}), 1)
+    assert [s.keitaro_id for s in db.scalars(select(Stream))] == [10]
+    assert db.scalars(select(StreamOffer)).all() == []
+
+
+def test_dirty_stream_blocks_fetch_when_requested(db):
+    fetch_campaign(db, FakeClient({1: 100}), 1)
+    so = by_offer(db)[1]
+    so.state, so.weight = "pending_remove", 0
+    db.commit()
+    with pytest.raises(DirtyStreamError):
+        fetch_campaign(db, FakeClient({1: 100}), 1, block_if_dirty=True)
+
+
+def test_dirty_stream_gone_from_keitaro_does_not_block(db):
+    fetch_campaign(db, FakeClient({1: 100}), 1)
+    so = by_offer(db)[1]
+    so.state, so.weight = "pending_remove", 0
+    db.commit()
+    fetch_campaign(db, FakeClientNoOffersStream({1: 100}), 1, block_if_dirty=True)
+    assert [s.keitaro_id for s in db.scalars(select(Stream))] == [10]

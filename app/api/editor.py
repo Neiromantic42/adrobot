@@ -35,12 +35,12 @@ def serialize_stream(db: Session, stream: Stream) -> dict:
         select(StreamOffer).where(StreamOffer.stream_id == stream.id).order_by(StreamOffer.id)
     ))
     return {
-        "id": stream.id,                  # локальный id (его используем в запросах)
+        "id": stream.id,  # локальный id (его используем в запросах)
         "keitaro_id": stream.keitaro_id,
         "name": stream.name,
         "position": stream.position,
         "has_offers": stream.has_offers,
-        "dirty": ops.is_dirty(items),     # True = «жёлтый», есть неопубликованное
+        "dirty": ops.is_dirty(items),  # True = «жёлтый», есть неопубликованное
         "offers": [
             {
                 "id": so.id,
@@ -76,9 +76,9 @@ def _stream_id_of(db: Session, so_id: int) -> int:
 
 @router.get("/offers/search")
 def search_offers(
-    q: str = Query("", max_length=100),
-    limit: int = Query(20, ge=1, le=50),
-    client: KeitaroClient = Depends(get_client),
+        q: str = Query("", max_length=100),
+        limit: int = Query(20, ge=1, le=50),
+        client: KeitaroClient = Depends(get_client),
 ):
     needle = q.strip().lower()
     found = [
@@ -90,15 +90,17 @@ def search_offers(
 
 
 @router.post("/campaigns/{keitaro_id}/fetch")
-def fetch(keitaro_id: int, db: Session = Depends(get_db), client: KeitaroClient = Depends(get_client)):
-    existing = db.scalar(select(Campaign).where(Campaign.keitaro_id == keitaro_id))
-    if existing is not None:
-        for stream in existing.streams:
-            if ops.stream_is_dirty(db, stream.id):
-                raise HTTPException(
-                    409, f"В потоке «{stream.name}» есть неопубликованные изменения: сначала Push или Cancel"
-                )
-    campaign = fetch_campaign(db, client, keitaro_id)
+def fetch(
+        keitaro_id: int,
+        db: Session = Depends(get_db),
+        client: KeitaroClient = Depends(get_client),
+):
+    campaign = fetch_campaign(
+        db,
+        client,
+        keitaro_id,
+        block_if_dirty=True,
+    )
     fill_offer_names(db, client)
     return serialize_campaign(db, campaign)
 
@@ -113,8 +115,8 @@ def get_campaign(keitaro_id: int, db: Session = Depends(get_db)):
 
 @router.post("/streams/{stream_id}/offers", status_code=201)
 def add_offer(
-    stream_id: int, data: AddOffer,
-    db: Session = Depends(get_db), client: KeitaroClient = Depends(get_client),
+        stream_id: int, data: AddOffer,
+        db: Session = Depends(get_db), client: KeitaroClient = Depends(get_client),
 ):
     names = keitaro_offers(client)
     if data.offer_id not in names:

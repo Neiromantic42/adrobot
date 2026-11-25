@@ -5,6 +5,7 @@ from app.services.stream_ops import (
     ACTIVE, LIVE, PENDING_REMOVE, REMOVED, OpError, _items, is_dirty,
 )
 from app.services.weights import TOTAL
+from app.services.keitaro_client import KeitaroError
 
 
 def push_stream(db: Session, client, stream_id: int) -> int:
@@ -30,7 +31,12 @@ def push_stream(db: Session, client, stream_id: int) -> int:
         {"offer_id": i.offer.keitaro_id, "share": i.weight, "state": "active"}
         for i in live
     ]
-    client.put(f"/streams/{stream.keitaro_id}", json={"offers": payload})
+    try:
+        client.put(f"/streams/{stream.keitaro_id}", json={"offers": payload})
+    except KeitaroError as e:
+        if e.status_code == 404:
+            raise OpError("Поток не найден в Keitaro (его удалили). Нажмите Fetch streams, чтобы обновить данные")
+        raise
 
     for i in items:
         if i.state in LIVE:

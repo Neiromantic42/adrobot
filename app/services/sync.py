@@ -3,6 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Campaign, Offer, OfferState, Stream, StreamOffer
 from app.services.keitaro_client import KeitaroError
+from app.services.stream_ops import stream_is_dirty
+
+
+class DirtyStreamError(Exception):
+    """В потоке есть неопубликованные изменения."""
 
 
 def _get_or_create_offer(db: Session, client, keitaro_offer_id: int) -> Offer:
@@ -51,11 +56,30 @@ def _merge_offers(db: Session, client, stream: Stream, k_offers: list[dict]) -> 
             so.published_weight = 0
 
 
-def fetch_campaign(db: Session, client, keitaro_campaign_id: int) -> Campaign:
+def fetch_campaign(db: Session, client, keitaro_campaign_id: int, block_if_dirty: bool = False) -> Campaign:
     k_campaign = client.get(f"/campaigns/{keitaro_campaign_id}")
     k_streams = client.get(f"/campaigns/{keitaro_campaign_id}/streams")
+    k_ids = {ks["id"] for ks in k_streams}
 
     campaign = db.scalar(select(Campaign).where(Campaign.keitaro_id == keitaro_campaign_id))
+    local_streams = []
+    if campaign is not None:
+        local_streams = list(db.scalars(select(Stream).where(Stream.campaign_id == campaign.id)))
+
+    # Блокируем только потоки, которые ещё есть в Keitaro: пропавшим уже ничего не опубликовать.
+    if block_if_dirty:
+        for s in local_streams:
+            if s.keitaro_id in k_ids and stream_is_dirty(db, s.id):
+                raise DirtyStreamError(
+                    f"В потоке «{s.name}» есть неопубликованные изменения: сначала Push или Cancel"
+                )
+
+    # Потоки, пропавшие из Keitaro, убираем локально (справочник офферов остаётся).
+    for s in local_streams:
+        if s.keitaro_id not in k_ids:
+            db.delete(s)
+    db.flush()
+
     if campaign is None:
         campaign = Campaign(keitaro_id=keitaro_campaign_id)
         db.add(campaign)

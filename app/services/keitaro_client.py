@@ -4,7 +4,11 @@ from app.config import settings
 
 
 class KeitaroError(Exception):
-    """Ошибка, возникающая при обращении к API Keitaro."""
+    """Ошибка при обращении к Keitaro Admin API."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class KeitaroClient:
@@ -47,7 +51,8 @@ class KeitaroClient:
         # Проверяем, не вернул ли сервер ошибку.
         if resp.status_code >= 400:
             raise KeitaroError(
-                f"{method} {path} -> {resp.status_code}: {resp.text[:300]}"
+                f"{method} {path} -> {resp.status_code}: {resp.text[:300]}",
+                status_code=resp.status_code,
             )
 
         # Преобразуем JSON-ответ сервера в Python-объект.
